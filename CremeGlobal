@@ -1,0 +1,303 @@
+# -*- coding: utf-8 -*-
+
+"""
+Created on Tue Jun 18 14:43:32 2019
+@author: gaurav & saurabh
+"""
+###################################
+# Importing the required libraries#
+###################################
+from onepagecrm import OnePageCRMAPI
+import pandas as pd
+import pypyodbc
+
+###################
+# OnePageCRM Login#
+###################
+client = OnePageCRMAPI.login('gaurav.pothapalayamnataraj@ucdconnect.ie','gaurav@609')
+
+#####################
+# Declared Variables#
+#####################
+valuelist= []
+valuelist2=[]
+valuelist3=[]
+keylist =[]
+con_keylist=[]
+con_valuelist=[]
+con_valuelist2=[]
+variablelist=[]
+index = 0
+dealitem_keylist=[]
+email_addresses = []
+phone_number = []
+url = []
+Scon_valuelist1=[]
+scon_keylist=[]
+
+####################
+#Declared Functions#
+####################
+
+# To extract the email IDs
+def getemailid():
+    
+    for contact in client.get('contacts', fields='emails', sparse=True)['contacts']:
+        emails = contact['contact'].get('emails')
+        if emails:
+            variablelist=[e.get('value') for e in emails]
+            email_addresses.append(variablelist[0])
+        else:
+            email_addresses.append('NA')
+    variablelist=[]
+    
+# To extract the Phone Numbers
+def getphonenumber():
+    
+    for contact in client.get('contacts', fields='phones', sparse=True)['contacts']:
+        phones = contact['contact'].get('phones')
+        if phones:
+            variablelist=[e.get('value') for e in phones]
+            phone_number.append(variablelist[0])
+        else:
+            phone_number.append('NA')
+    variablelist=[]
+   
+# To extract the LinkedIn Urls
+def geturls():
+    
+    for contact in client.get('contacts', fields='urls', sparse=True)['contacts']:
+        urls = contact['contact'].get('urls')
+        if urls:
+            variablelist=[e.get('value') for e in urls]
+            url.append(variablelist[0])
+        else:
+            url.append('NA')
+    variablelist=[]
+    
+    
+
+    
+# To extract values from nested dictionaries (Dictionary Comprehension)
+    
+def recursive_items(a):
+    for key,value in (a.items()):
+        if type(value) is dict:
+            yield (key, value)
+            yield from recursive_items(value)
+       
+        else:
+            yield (key, value)
+            
+
+# Fetching contacts from the OnePageCRM
+            
+contacts = client.get('contacts', 
+                      if_modified_since='2014-07-10',
+                      sort_by='modified_at',
+                      order='asc')
+
+# Fetching deals from the OnePageCRM
+deals = client.get('deals',
+                   if_modified_since='2014-07-10',
+                   sort_by='modified_at',
+                   order='asc')
+
+########################################################################
+#Extraction of Key-Value Pairs for nested dictionares in separate Lists#
+########################################################################
+
+
+################
+#Contacts Table#
+################
+
+# To get the list of keys (column names) for Contacts
+for i in range(len(contacts['contacts'])):
+    for key, value in recursive_items(contacts['contacts'][i]):
+        if type(value) != dict:
+            con_keylist.append(key)
+    if index == 0:
+        break                          #Break at index 0 is used to extract Keys only once
+
+# To get the list of values (rows) for Contacts            
+for i in range(len(contacts['contacts'])):
+    for key, value in recursive_items(contacts['contacts'][i]):
+        if type(value) != dict:
+            if type(value) == list:
+                con_valuelist.append(str(value))   
+            else:
+                con_valuelist.append(value)
+                
+    tuplelist= tuple(con_valuelist)
+    con_valuelist2.append(tuplelist)
+    con_valuelist = []
+    tuplelist= ()
+
+################
+#Deals Table   #
+################
+
+# To get the list of keys (column names) for deals
+for i in range(len(deals['deals'])):
+    for key, value in recursive_items(deals['deals'][i]):
+        if type(value) != dict:
+            keylist.append(key)
+    if ('stage'in keylist)==False: 
+        keylist[-2] = ['stage'] 
+    if index == 0:                  
+       break                     #Break at index 0 is used to extract Keys only once
+
+#To prevent multiple columns to have names
+keylist[3]='owner_id2'
+keylist[6]='Deal_Name'
+
+#TO get the list of values (rows) for deals
+for i in range(len(deals['deals'])):
+    for key, value in recursive_items(deals['deals'][i]):
+        if type(value) != dict:
+            if type(value) == list:
+                valuelist.append(str(value))
+                
+            else:
+                valuelist.append(value)
+    
+    if ('won'in valuelist)==True:  #To accomodate missing stage value in case if a deal is won i.e.  100
+        valuelist[32:32]=[100]  
+    tuplelist= tuple(valuelist)
+    valuelist2.append(tuplelist)
+    valuelist = []
+    tuplelist= ()
+       
+#################
+#Deal Item Table#
+#################
+    
+#To create list of columns of deal items in deals
+dealitem_keylist=['id','name','description','cost','price','amount','qty','deal_id','predefined_item_id','position','created_at','modified_at']
+      
+#To extract values of deal items in deals 
+for i in range(len(deals['deals'])):
+    for key, value in recursive_items(deals['deals'][i]):
+        if type(value) != dict:
+            valuelist.append(value)
+    
+    if ('won'in valuelist)==True:  #To accomodate missing stage value in case if a deal is won i.e.  100
+        valuelist[32:32]=[100]
+    x=valuelist[28]
+    for  i in x:
+            valuelist3.append(list(i.values()))
+    valuelist = []  
+
+
+####################    
+#Sub contacts Table#
+####################
+
+#Sub contacts Table contains email, Url & Phone Number for each Contact
+
+#Calling Functions to get values in email_addresses[], phone_numbe[] & url[]
+getemailid()
+getphonenumber()
+geturls()
+
+#Values of Sub contacts Table
+for i in range(len(email_addresses)):
+    Scon_valuelist1.append([email_addresses[i], phone_number[i], url[i]])
+
+#Keys of Sub contacts Table
+    
+scon_keylist=['emails','phones','urls']
+
+####################
+#DataFrane Creation#
+####################
+
+#Sub contacts Table DataFrame
+df_subcontacts=pd.DataFrame.from_records(Scon_valuelist1, columns=scon_keylist)
+    
+#Deals Table Dable DataFrame
+df_deals = pd.DataFrame.from_records(valuelist2, columns=keylist)
+
+#Contacts Table Dable DataFrame
+df_contacts = pd.DataFrame.from_records(con_valuelist2, columns=con_keylist)
+
+#Deals item Table Dable DataFrame
+df_dealitem=pd.DataFrame.from_records(valuelist3, columns=dealitem_keylist)
+
+
+#####################
+#DataBase Connection#
+#####################
+
+#Establishing Connection to 'Creme Global' database hosted on Microsoft Azure
+
+connection = pypyodbc.connect('Driver={ODBC Driver 13 for SQL Server};'
+
+'Server=tcp:creme958.database.windows.net,1433;'
+
+'Database=Ceme Global;'
+
+'Uid=creme958@creme958;Pwd=saurabh@123;')
+
+cursor = connection.cursor()
+
+######################
+#Updating Deals Table#
+######################
+
+#Query to insert variable values to Deals Table
+sql_insert_query_Deals = " INSERT INTO dbo.CremeDataDeals(id,contact_id, owner_id, owner_id2, name, email, Deal_Name, text, date, contact_name, contact_owner_id, company, author, amount, months, total_amount, cost, total_cost, margin, commission, commission_percentage, commission_type, commission_base, status,  has_related_notes, attachments, deal_fields, has_deal_items, deal_items, created_at, modified_at, pipeline_id, stage, expected_close_date)\
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+
+#To Clear exsisting Values in Deals Table
+cursor.execute( " DELETE FROM dbo.CremeDataDeals " )  
+
+#To execute for insert query for each deal fetched 
+cursor.executemany(sql_insert_query_Deals,valuelist2)
+
+###########################
+#updating Deals Item Table#
+###########################
+
+#Query to insert variable values to Deals Item Table
+sql_insert_query_dealitem = " INSERT INTO dbo.dealitem\
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+
+#To Clear exsisting Values in Deals Item Table
+cursor.execute( " DELETE FROM dbo.dealitem " )
+
+#To execute for insert query for each dealitem fetched 
+cursor.executemany(sql_insert_query_dealitem,valuelist3)
+
+#########################
+#Updating Contacts Table#
+#########################
+
+#Query to insert variable values to Contacts Table
+sql_insert_query_Contacts = " INSERT INTO dbo.CremeDataContacts\
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+
+#To Clear exsisting Values in Contacts Table
+cursor.execute( " DELETE FROM dbo.CremeDataContacts " )
+
+#To execute for insert query for each Contacts fetched 
+cursor.executemany(sql_insert_query_Contacts,con_valuelist2)
+
+############################
+#Updating Sub contact table#
+############################
+
+#Query to insert variable values to Sub Contacts Table
+sql_insert_query_subcontacts = " INSERT INTO dbo.subcontacts\
+                       VALUES (?,?,?) "
+
+#To Clear exsisting Values in Sub contact Table
+cursor.execute( " DELETE FROM dbo.subcontacts " )
+
+#To execute for insert query for each Sub contact fetched 
+cursor.executemany(sql_insert_query_subcontacts,Scon_valuelist1)
+
+
+connection.commit()
+connection.close()
